@@ -1,5 +1,6 @@
 .env
 .rotate_state.json
+.smart_state.json
 .claude/
 __pycache__/
 *.pyc

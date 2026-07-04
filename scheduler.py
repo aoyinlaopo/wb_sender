@@ -8,8 +8,9 @@
   # 轮询模式（推荐！自动读取 wenan/ + images/ 目录，按顺序轮发）
   python scheduler.py --once --rotate
 
-  # 轮询 + 持续运行模式
-  python scheduler.py --daemon --rotate --cron "0 9,12,18,22 * * *"
+  # 智能图片池模式（文案轮播 + 图片不重复）
+  python scheduler.py --once --smart
+  python scheduler.py --once --smart --per-post 3
 
   # 预配置模式（从 posts.json 随机选）
   python scheduler.py --once --from-json posts.json
@@ -159,6 +160,106 @@ def send_rotate(
     print(f"  💾 状态已保存（下次将从第 {(next_index + 1) % total + 1} 条开始）")
 
 
+# ── 智能图片池模式 ─────────────────────────────────────────
+
+SMART_STATE_FILE = ".smart_state.json"
+DEFAULT_PER_POST = 6
+
+
+def send_smart_rotate(
+    wenan_dir: str = DEFAULT_WENAN_DIR,
+    images_dir: str = DEFAULT_IMAGES_DIR,
+    per_post: int = DEFAULT_PER_POST,
+):
+    """
+    智能图片池模式：
+      - 从 wenan/ 读取文案列表，按文件名排序轮播
+      - 从 images/（递归）读取所有图片作为图片池
+      - 每次随机选 per_post 张未用过的图片
+      - 当天内图片不重复，隔天自动重置
+    """
+    print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 🧠 智能图片池模式启动...")
+
+    IMG_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+    # 1. 读取文案列表
+    wenan_path = Path(wenan_dir)
+    if not wenan_path.is_dir():
+        raise FileNotFoundError(f"文案目录不存在: {wenan_dir}")
+    texts = []
+    for txt_file in sorted(wenan_path.iterdir()):
+        if txt_file.suffix.lower() == ".txt":
+            texts.append(txt_file.read_text(encoding="utf-8").strip())
+            print(f"  📝 [{len(texts)}] {txt_file.name}")
+    if not texts:
+        raise RuntimeError(f"wenan/ 目录中没有 .txt 文案文件")
+    print(f"  共 {len(texts)} 段文案")
+
+    # 2. 读取图片池（递归扫描）
+    images_path = Path(images_dir)
+    if not images_path.is_dir():
+        raise FileNotFoundError(f"图片目录不存在: {images_dir}")
+    all_images = sorted([
+        p.name for p in images_path.rglob("*")
+        if p.suffix.lower() in IMG_EXTS
+    ])
+    if not all_images:
+        raise RuntimeError(f"images/ 目录中没有图片文件")
+    print(f"  🖼️  图片池共 {len(all_images)} 张")
+
+    # 3. 加载状态
+    state = {}
+    if Path(SMART_STATE_FILE).exists():
+        state = json.loads(Path(SMART_STATE_FILE).read_text(encoding="utf-8"))
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # 隔天重置
+    if state.get("date") != today:
+        state = {"date": today, "text_index": 0, "used_images": []}
+        print("  🔄 新的一天，图片池重置")
+
+    used = set(state.get("used_images", []))
+    available = [img for img in all_images if img not in used]
+
+    # 4. 检查图片是否够用
+    if len(available) < per_post:
+        print(f"  ⚠️  可用图片不足！需要 {per_post} 张，仅剩 {len(available)} 张")
+        print(f"  已重置图片池，从头开始")
+        used = set()
+        available = all_images.copy()
+
+    # 5. 随机选图
+    chosen = random.sample(available, per_post)
+    chosen_paths = [str(images_path / img) for img in chosen]
+
+    # 查找图片的实际路径名
+    img_path_map = {}
+    for p in images_path.rglob("*"):
+        if p.suffix.lower() in IMG_EXTS and p.name in chosen:
+            if p.name not in img_path_map:
+                img_path_map[p.name] = str(p)
+
+    chosen_paths = [img_path_map[name] for name in chosen]
+
+    print(f"  🎲 随机选了 {len(chosen)} 张: {', '.join(chosen)}")
+
+    # 6. 发送
+    text_index = state.get("text_index", 0)
+    text = texts[text_index % len(texts)]
+    print(f"  📤 文案 [{text_index + 1}/{len(texts)}] + {len(chosen_paths)} 张图")
+    send_once(text, chosen_paths)
+
+    # 7. 更新状态
+    state["date"] = today
+    state["text_index"] = (text_index + 1) % len(texts)
+    state["used_images"] = list(used | set(chosen))
+    Path(SMART_STATE_FILE).write_text(
+        json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(f"  💾 状态已保存（今日已用 {len(state['used_images'])}/{len(all_images)} 张，下次文案 #{state['text_index'] + 1}）")
+
+
 # ── 一次性发送 ─────────────────────────────────────────────
 
 
@@ -277,6 +378,14 @@ def main():
         help="轮询模式：自动扫描 wenan/ 和 images/ 目录，按顺序轮发"
     )
     parser.add_argument(
+        "--smart", action="store_true",
+        help="智能图片池模式：文案轮播 + 图片池随机不重复选取"
+    )
+    parser.add_argument(
+        "--per-post", type=int, default=DEFAULT_PER_POST,
+        help=f"智能模式下每条微博发几张图（默认: {DEFAULT_PER_POST}）"
+    )
+    parser.add_argument(
         "--wenan-dir", type=str, default=DEFAULT_WENAN_DIR, help=f"文案目录（默认: {DEFAULT_WENAN_DIR}/）"
     )
     parser.add_argument(
@@ -305,7 +414,10 @@ def main():
         return
 
     if args.daemon:
-        if args.rotate:
+        if args.smart:
+            print("❌ daemon + smart 暂不支持，请用 Windows 任务计划程序 + --once --smart")
+            sys.exit(1)
+        elif args.rotate:
             run_daemon_rotate(args.cron, args.wenan_dir, args.images_dir)
         elif args.from_json:
             print("❌ daemon + from-json 暂不支持，请用 --rotate 代替")
@@ -313,6 +425,8 @@ def main():
         else:
             print("❌ daemon 模式需要 --rotate 或 --from-json 参数")
             sys.exit(1)
+    elif args.smart:
+        send_smart_rotate(args.wenan_dir, args.images_dir, args.per_post)
     elif args.rotate:
         send_rotate(args.wenan_dir, args.images_dir)
     elif args.from_json:
