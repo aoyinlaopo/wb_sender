@@ -2,9 +2,8 @@ name: 定时发微博（轮询）
 
 on:
   schedule:
-    # 每天 8:00、12:00、18:00、22:00 (UTC+8)
-    # GitHub Actions 用 UTC 时间，所以减 8 小时
-    - cron: '0 0,4,10,14 * * *'
+    # 测试模式：每 5 分钟一次（测完改回去）
+    - cron: '*/5 * * * *'
   workflow_dispatch:  # 允许手动触发
     inputs:
       mode:
@@ -22,6 +21,9 @@ on:
         description: '图片路径（仅 custom 模式）'
         required: false
         default: ''
+
+permissions:
+  contents: write
 
 jobs:
   post-weibo:
@@ -60,4 +62,5 @@ jobs:
           git config user.email "bot@weibo.local"
           git add .rotate_state.json
           git diff --staged --quiet || git commit -m "chore: 更新轮询状态 [skip ci]"
+          git pull --rebase origin main
           git push
