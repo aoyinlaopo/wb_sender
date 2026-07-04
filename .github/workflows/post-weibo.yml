@@ -1,0 +1,63 @@
+name: 定时发微博（轮询）
+
+on:
+  schedule:
+    # 每天 8:00、12:00、18:00、22:00 (UTC+8)
+    # GitHub Actions 用 UTC 时间，所以减 8 小时
+    - cron: '0 0,4,10,14 * * *'
+  workflow_dispatch:  # 允许手动触发
+    inputs:
+      mode:
+        description: '发送模式'
+        required: true
+        type: choice
+        default: 'rotate'
+        options:
+          - rotate
+          - custom
+      text:
+        description: '微博内容（仅 custom 模式）'
+        required: false
+      image:
+        description: '图片路径（仅 custom 模式）'
+        required: false
+        default: ''
+
+jobs:
+  post-weibo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 发送微博
+        env:
+          WEIBO_COOKIE: ${{ secrets.WEIBO_COOKIE }}
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          if [ "$MODE" = "custom" ] && [ -n "${{ github.event.inputs.text }}" ]; then
+            IMAGE_ARG=""
+            if [ -n "${{ github.event.inputs.image }}" ]; then
+              IMAGE_ARG="--image ${{ github.event.inputs.image }}"
+            fi
+            python scheduler.py --once --text "${{ github.event.inputs.text }}" $IMAGE_ARG
+          else
+            python scheduler.py --once --rotate
+          fi
+
+      - name: 提交轮询状态
+        if: success()
+        run: |
+          git config user.name "weibo-bot"
+          git config user.email "bot@weibo.local"
+          git add .rotate_state.json
+          git diff --staged --quiet || git commit -m "chore: 更新轮询状态 [skip ci]"
+          git push

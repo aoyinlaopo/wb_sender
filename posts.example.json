@@ -1,0 +1,28 @@
+{
+  "posts": [
+    {
+      "text": "早安！今天也是元气满满的一天 🌞",
+      "image": "./images/morning.jpg"
+    },
+    {
+      "text": "午餐时间到！大家中午好 🍚",
+      "image": null
+    },
+    {
+      "text": "又到了下午茶时间 ☕ 分享一张好看的风景照",
+      "image": "./images/scenery/"
+    },
+    {
+      "text": "晚安世界 🌙 明天见",
+      "image": "./images/goodnight.jpg"
+    },
+    {
+      "text": "随手拍分享 📷 今天的天空格外蓝",
+      "image": "./images/sky/"
+    }
+  ],
+  "schedule": {
+    "cron": "0 9,12,18,22 * * *",
+    "description": "每天 9:00、12:00、18:00、22:00 各发一条"
+  }
+}

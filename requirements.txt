@@ -1,0 +1,4 @@
+# 微博自动发博 — 依赖
+requests>=2.28
+python-dotenv>=1.0
+APScheduler>=3.10
