@@ -1,9 +1,6 @@
-name: 定时发微博（轮询）
+name: 定时发微博（手动触发）
 
 on:
-  schedule:
-    # 测试模式：每 5 分钟一次（测完改回去）
-    - cron: '*/5 * * * *'
   workflow_dispatch:  # 允许手动触发
     inputs:
       mode:
