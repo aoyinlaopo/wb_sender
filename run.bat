@@ -1,4 +1,4 @@
 @echo off
 chcp 65001 >nul
-cd /d "D:\Workspace\llm\daily"
+cd /d "%~dp0"
 python scheduler.py --once --rotate

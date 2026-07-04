@@ -1,105 +1,190 @@
-# 微博自动发博工具
+# 微博自动发博工具 — 零基础搭建教程
 
-无需注册微博开发者，通过 Cookie 模拟登录实现**定时发送带图片的微博**。
+无需编程知识，不用注册开发者，半小时内搞定定时发微博。
 
-## 快速开始
+---
 
-### 1. 安装依赖
+## 第一步：安装 Python
 
-```bash
-pip install -r requirements.txt
+1. 打开 https://www.python.org/downloads/
+2. 点击黄色按钮下载最新版（看到 `Download Python 3.x.x` 就点）
+3. 运行下载的安装包
+4. **⚠️ 重要**：第一屏底部勾选 **「Add Python to PATH」**（一定要勾！）
+5. 点 `Install Now`，等待完成
+
+验证是否装好：按 `Win+R`，输入 `cmd` 回车，在黑窗口里输入：
+
+```
+python --version
 ```
 
-### 2. 获取 Cookie
+如果显示 `Python 3.x.x` 就说明装好了。
 
-1. 用浏览器登录 [weibo.com](https://weibo.com)
-2. 按 `F12` → `Application`（应用程序）→ `Cookies` → `weibo.com`
-3. 找到 `SUB` 这个 Cookie，复制它的值
-4. 把整个 Cookie 字符串复制出来（至少包含 `SUB=xxx; SUBP=xxx;`）
+---
 
-> ⚠️ Cookie 有效期一般 **1-3 天**，过期需要重新获取。
+## 第二步：获取项目文件
 
-### 3. 配置
+### 方式 A：下载 ZIP（推荐，无需 git）
+
+1. 打开 https://github.com/aoyinlaopo/wb_sender
+2. 点绿色 `Code` 按钮 → `Download ZIP`
+3. 解压到你想要的位置，比如 `D:\wb_sender\`
+
+### 方式 B：用 git 克隆
 
 ```bash
-cp .env.example .env
-# 编辑 .env，把 WEIBO_COOKIE= 后面替换成你复制的 Cookie
+git clone https://github.com/aoyinlaopo/wb_sender.git
 ```
 
-### 4. 运行
+---
+
+## 第三步：获取微博 Cookie
+
+这个是"钥匙"，让脚本能代你发微博。
+
+1. 用 **Chrome 浏览器** 打开 https://weibo.com 并登录
+2. 按 `F12` 打开开发者工具
+3. 顶部点 `Application`（应用程序）标签（如果没看到，点 `>>` 展开找）
+4. 左侧找到 `Cookies` → 点 `https://weibo.com`
+5. 在右侧表格中，找到并**全选所有行**，复制（Ctrl+C）
+6. 也可以只复制 `SUB`、`SUBP`、`XSRF-TOKEN`、`SCF`、`WBPSESS` 这几个关键字段
+
+> Cookie 格式像这样：`SUB=_2A25...; SUBP=0033W...; XSRF-TOKEN=...`
+
+---
+
+## 第四步：配置 Cookie
+
+在项目目录下，把 `.env.example` **复制一份**，重命名为 `.env`。
+
+用**记事本**打开 `.env`，把等号后面的内容替换成你的 Cookie：
+
+```
+WEIBO_COOKIE=你复制的Cookie字符串
+```
+
+保存关闭。
+
+---
+
+## 第五步：安装依赖
+
+按 `Win+R`，输入 `cmd` 回车。在黑窗口里：
 
 ```bash
-# 发纯文字微博
-python scheduler.py --once --text "Hello 微博！这是一条测试 👋"
+cd /d D:\wb_sender
+pip install requests python-dotenv
+```
 
-# 发带图微博
-python scheduler.py --once --text "今天的晚霞好美 🌅" --image ./images/sunset.jpg
+> 路径换成你实际解压的位置。看到 `Successfully installed` 就是装好了。
+
+---
+
+## 第六步：准备文案和图片
+
+在项目目录下有两个文件夹：
+
+```
+wb_sender/
+├── wenan/        ← 文案放这里
+│   ├── 文案1.txt
+│   ├── 文案2.txt
+│   └── 文案3.txt
+├── images/       ← 图片放这里
+│   ├── 文案1.jpg
+│   ├── 文案2.jpg
+│   └── 文案3.jpg
+```
+
+**规则**：
+- 文案文件和图片文件**编号对应**：`文案1.txt` 配 `文案1.jpg`
+- 图片支持 `.jpg` `.png` `.gif` `.webp`
+- 想加更多就继续编号：`文案4.txt` + `文案4.jpg`，自动识别
+
+---
+
+## 第七步：测试发送
+
+在 cmd 窗口中：
+
+```bash
+# 发一条带图微博（手动指定）
+python scheduler.py --once --text "测试文案" --image ./images/文案1.jpg
 
 # 检查 Cookie 是否有效
 python scheduler.py --check
 
-# 从配置文件随机发（推荐用于定时任务）
-cp posts.example.json posts.json
-# 编辑 posts.json 填入你想发的内容
-python scheduler.py --once --from-json posts.json
+# 轮询模式：自动发下一条
+python scheduler.py --once --rotate
 ```
 
-## 定时发送
+---
 
-### 方式 A：GitHub Actions（推荐，免费免运维）
+## 第八步：设置定时任务
 
-1. 把代码推到 GitHub 仓库
-2. 在仓库 `Settings` → `Secrets and variables` → `Actions` 中添加 `WEIBO_COOKIE`
-3. 编辑 `.github/workflows/post-weibo.yml` 修改 cron 时间
-4. GitHub 会按照 cron 时间自动运行
+### 每天定时发送
 
-**默认**：每天 UTC 1:00（北京时间 9:00）自动发一条。
-
-### 方式 B：Windows 任务计划程序
-
-1. 打开"任务计划程序"（`taskschd.msc`）
-2. 创建基本任务 → 触发器设为"每天"
-3. 操作 → 启动程序：
-
-```
-程序: C:\Python311\python.exe
-参数: D:\Workspace\llm\daily\scheduler.py --once --from-json D:\Workspace\llm\daily\posts.json
-起始于: D:\Workspace\llm\daily
-```
-
-### 方式 C：Linux/Mac Cron
+以管理员身份打开 cmd（`Win` 键 → 输入 `cmd` → 右键 → **以管理员身份运行**）：
 
 ```bash
-# 每天早 8 点发
-0 8 * * * cd /path/to/project && python scheduler.py --once --from-json posts.json >> /tmp/weibo.log 2>&1
+# 每天 8:00
+schtasks /create /tn "微博8点" /tr "D:\wb_sender\run.bat" /sc daily /st 08:00 /f
+
+# 每天 12:00
+schtasks /create /tn "微博12点" /tr "D:\wb_sender\run.bat" /sc daily /st 12:00 /f
+
+# 每天 18:00
+schtasks /create /tn "微博18点" /tr "D:\wb_sender\run.bat" /sc daily /st 18:00 /f
+
+# 每天 22:00
+schtasks /create /tn "微博22点" /tr "D:\wb_sender\run.bat" /sc daily /st 22:00 /f
 ```
 
-## posts.json 配置说明
+> 路径 `D:\wb_sender\run.bat` 换成你实际的项目路径。时间可以随便改。
 
-```json
-{
-  "posts": [
-    {
-      "text": "微博内容",
-      "image": "图片路径 或 图片文件夹/ 或 null"
-    }
-  ]
-}
+### 其他频率示例
+
+```bash
+# 每 2 小时一次
+schtasks /create /tn "微博定时" /tr "D:\wb_sender\run.bat" /sc hourly /mo 2 /f
+
+# 每 30 分钟一次
+schtasks /create /tn "微博定时" /tr "D:\wb_sender\run.bat" /sc minute /mo 30 /f
 ```
 
-- `image` 是**文件路径**：固定发这张图
-- `image` 是**文件夹路径**（以 `/` 结尾）：从文件夹中**随机选一张图**
-- `image` 是 `null`：纯文字微博
+### 管理定时任务
 
-支持 jpg、png、gif、webp 格式，单张 ≤ 5MB。
+- 查看所有任务：`Win+R` → 输入 `taskschd.msc` → 回车
+- 停用任务：找到任务 → 右键 → **禁用**
+- 删除任务：以管理员身份运行 cmd：
 
-## 项目结构
+```bash
+# 删除单个
+schtasks /delete /tn "微博8点" /f
 
+# 删除全部
+schtasks /delete /tn "微博8点" /f
+schtasks /delete /tn "微博12点" /f
+schtasks /delete /tn "微博18点" /f
+schtasks /delete /tn "微博22点" /f
 ```
-├── weibo_poster.py   # 核心模块：图片上传 + 发微博
-├── scheduler.py      # 调度器：CLI 入口 + 定时任务
-├── posts.json        # 待发内容配置（需自己创建）
-├── .env              # Cookie 配置（需自己创建）
-├── images/           # 图片文件夹
-└── .github/workflows/post-weibo.yml  # GitHub Actions 配置
-```
+
+---
+
+## 常见问题
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `python 不是内部命令` | 没勾选 Add Python to PATH | 重装 Python，勾选那个选项 |
+| `ModuleNotFoundError` | 没装依赖 | 执行 `pip install requests python-dotenv` |
+| `Cookie 已过期` | SUB Cookie 1-3 天失效 | 重新从浏览器复制 Cookie 更新 `.env` |
+| 发了但没图片 | 接口问题 | 确认文案和图片编号对应 |
+| 定时任务没触发 | 电脑休眠/关机了 | 定时任务需要电脑开着 |
+
+---
+
+## 备注
+
+- Cookie 一般 **1-3 天** 过期，建议每两天手动更新一次
+- 微博每小时最多发 **45 条**，别设太频繁
+- 电脑需要保持开机才能触发定时任务
