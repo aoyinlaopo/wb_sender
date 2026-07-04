@@ -82,24 +82,30 @@ pip install requests python-dotenv
 
 ## 第六步：准备文案和图片
 
-在项目目录下有两个文件夹：
+在项目目录下有两个文件夹，支持**单图**和**多图**两种方式：
 
 ```
 wb_sender/
-├── wenan/        ← 文案放这里
+├── wenan/          ← 文案放这里
 │   ├── 文案1.txt
 │   ├── 文案2.txt
 │   └── 文案3.txt
-├── images/       ← 图片放这里
-│   ├── 文案1.jpg
-│   ├── 文案2.jpg
+├── images/         ← 图片放这里
+│   ├── 文案1/      ← 多图模式：子文件夹（1-9张）
+│   │   ├── 01.jpg
+│   │   ├── 02.jpg
+│   │   └── 03.jpg
+│   ├── 文案2.jpg   ← 单图模式：直接放文件
 │   └── 文案3.jpg
 ```
 
 **规则**：
-- 文案文件和图片文件**编号对应**：`文案1.txt` 配 `文案1.jpg`
+- 文案文件和图片**编号对应**：`文案1.txt` 配 `文案1/` 文件夹或 `文案1.jpg`
+- **多图模式**：创建 `images/文案N/` 子文件夹，里面最多放 9 张图片
+- **单图模式**：直接在 `images/` 下放 `文案N.jpg`
+- 两种模式可混用，系统自动识别
 - 图片支持 `.jpg` `.png` `.gif` `.webp`
-- 想加更多就继续编号：`文案4.txt` + `文案4.jpg`，自动识别
+- 想加更多就继续编号，自动识别
 
 ---
 
@@ -108,13 +114,16 @@ wb_sender/
 在 cmd 窗口中：
 
 ```bash
-# 发一条带图微博（手动指定）
-python scheduler.py --once --text "测试文案" --image ./images/文案1.jpg
+# 发单图微博
+python scheduler.py --once --text "测试文案" --images ./images/文案1.jpg
+
+# 发多图微博（空格分隔，最多9张）
+python scheduler.py --once --text "多图测试" --images ./images/文案1/01.jpg ./images/文案1/02.jpg
 
 # 检查 Cookie 是否有效
 python scheduler.py --check
 
-# 轮询模式：自动发下一条
+# 轮询模式：自动发下一条（自动识别单图/多图）
 python scheduler.py --once --rotate
 ```
 

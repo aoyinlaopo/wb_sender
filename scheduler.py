@@ -3,7 +3,7 @@
 
 用法:
   # 一次性发送（适合 cron / GitHub Actions）
-  python scheduler.py --once --text "早安！今天也是元气满满的一天 🌞" --image ./photo.jpg
+  python scheduler.py --once --text "早安！今天也是元气满满的一天" --images ./photo1.jpg ./photo2.jpg
 
   # 轮询模式（推荐！自动读取 wenan/ + images/ 目录，按顺序轮发）
   python scheduler.py --once --rotate
@@ -41,7 +41,10 @@ DEFAULT_IMAGES_DIR = "images"
 def discover_posts(wenan_dir: str, images_dir: str) -> List[Tuple[str, str]]:
     """
     扫描文案和图片目录，按编号配对。
-    返回 [(文案内容, 图片路径), ...] 列表。
+    支持两种图片组织方式：
+      - 多图：images/文案N/ 子文件夹，放 1-9 张图片
+      - 单图：images/文案N.jpg（兼容旧方式）
+    返回 [(文案内容, [图片路径列表]), ...]。
     """
     wenan_path = Path(wenan_dir)
     images_path = Path(images_dir)
@@ -51,43 +54,59 @@ def discover_posts(wenan_dir: str, images_dir: str) -> List[Tuple[str, str]]:
     if not images_path.is_dir():
         raise FileNotFoundError(f"图片目录不存在: {images_dir}")
 
-    # 扫描所有 文案N.txt，提取编号
+    IMG_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
     pattern = re.compile(r"^文案(\d+)\.txt$")
-    pairs: List[Tuple[int, str, Path]] = []  # [(编号, 文本文件路径, 图片路径)]
+    entries: List[Tuple[int, str, List[str]]] = []  # [(编号, 文本路径, [图片路径列表])]
 
     for txt_file in sorted(wenan_path.iterdir()):
         match = pattern.match(txt_file.name)
         if not match:
             continue
         num = int(match.group(1))
-        txt_path = txt_file
 
-        # 找对应图片
+        # 优先检查子文件夹（多图模式）
+        sub_dir = images_path / f"文案{num}"
+        if sub_dir.is_dir():
+            imgs = sorted([
+                str(p) for p in sub_dir.iterdir()
+                if p.suffix.lower() in IMG_EXTS
+            ])[:9]  # 微博最多 9 张
+            if imgs:
+                entries.append((num, str(txt_file), imgs))
+                print(f"  📋 [{num}] {txt_file.name} ↔ {sub_dir.name}/ ({len(imgs)}张图)")
+                continue
+            else:
+                print(f"  ⚠️  文案{num}/ 文件夹为空，跳过")
+
+        # 回退：单文件匹配（旧方式）
         img_file = None
-        for ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
+        for ext in IMG_EXTS:
             candidate = images_path / f"文案{num}{ext}"
             if candidate.exists():
                 img_file = candidate
                 break
 
-        if img_file is None:
+        if img_file:
+            entries.append((num, str(txt_file), [str(img_file)]))
+            print(f"  📋 [{num}] {txt_file.name} ↔ {img_file.name}")
+        else:
             print(f"  ⚠️  文案{num}.txt 没有找到对应图片，跳过")
-            continue
 
-        pairs.append((num, txt_path, img_file))
-
-    if not pairs:
-        raise RuntimeError(f"没有找到可配对的文案和图片（wenan/文案N.txt ↔ images/文案N.jpg）")
+    if not entries:
+        raise RuntimeError(
+            "没有找到可配对的文案和图片。\n"
+            "  单图：wenan/文案N.txt ↔ images/文案N.jpg\n"
+            "  多图：wenan/文案N.txt ↔ images/文案N/*.jpg"
+        )
 
     # 按编号排序
-    pairs.sort(key=lambda x: x[0])
+    entries.sort(key=lambda x: x[0])
 
     # 读取文案内容
-    result: List[Tuple[str, str]] = []
-    for num, txt_path, img_path in pairs:
-        text = txt_path.read_text(encoding="utf-8").strip()
-        result.append((text, str(img_path)))
-        print(f"  📋 [{num}] {txt_path.name} ↔ {img_path.name}")
+    result: List[Tuple[str, List[str]]] = []
+    for num, txt_path, img_paths in entries:
+        text = Path(txt_path).read_text(encoding="utf-8").strip()
+        result.append((text, img_paths))
 
     return result
 
@@ -128,10 +147,10 @@ def send_rotate(
 
     # 下一条的索引
     next_index = (state["index"] + 1) % total
-    text, image = posts[next_index]
+    text, images = posts[next_index]
 
     print(f"  📤 发送第 {next_index + 1}/{total} 条")
-    send_once(text, image)
+    send_once(text, images)
 
     # 保存状态
     state["index"] = next_index
@@ -143,17 +162,17 @@ def send_rotate(
 # ── 一次性发送 ─────────────────────────────────────────────
 
 
-def send_once(text: str, image: Optional[str] = None):
-    """发送一条微博"""
+def send_once(text: str, images: Optional[List[str]] = None):
+    """发送一条微博（支持多图，最多9张）"""
     cookie = load_cookie_from_env()
     poster = WeiboPoster(cookie)
     poster.warmup()  # 预热会话，降低风控概率
 
-    if image:
-        if not Path(image).exists():
-            print(f"❌ 图片不存在: {image}")
-            sys.exit(1)
-        poster.post_with_image(text, image)
+    if images:
+        if len(images) == 1:
+            poster.post_with_image(text, images[0])
+        else:
+            poster.post_with_images(text, images)
     else:
         poster.post_text(text)
 
@@ -178,19 +197,24 @@ def send_from_json(json_path: str):
     post = random.choice(posts)
     text = post["text"]
 
-    image = None
-    img_config = post.get("image")
+    images = None
+    img_config = post.get("image") or post.get("images")
     if img_config:
-        img_path = Path(img_config)
-        if img_path.is_dir():
-            exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-            images = [p for p in img_path.iterdir() if p.suffix.lower() in exts]
-            if images:
-                image = str(random.choice(images))
-        elif img_path.is_file():
-            image = str(img_path)
+        if isinstance(img_config, list):
+            # 图片列表：["a.jpg", "b.jpg"]
+            images = img_config
+        elif isinstance(img_config, str):
+            img_path = Path(img_config)
+            if img_path.is_dir():
+                # 文件夹：随机选一张
+                exts = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+                all_imgs = [str(p) for p in img_path.iterdir() if p.suffix.lower() in exts]
+                if all_imgs:
+                    images = all_imgs[:9]
+            elif img_path.is_file():
+                images = [str(img_path)]
 
-    send_once(text, image)
+    send_once(text, images)
 
 
 # ── 持续运行模式（APScheduler）──────────────────────────────
@@ -244,7 +268,7 @@ def main():
         "--once", action="store_true", help="发送一次后退出（适合 cron / GitHub Actions）"
     )
     parser.add_argument("--text", type=str, help="微博文本内容")
-    parser.add_argument("--image", type=str, help="图片路径（可选）")
+    parser.add_argument("--images", type=str, nargs="+", help="图片路径，支持多张（空格分隔）")
     parser.add_argument(
         "--from-json", type=str, metavar="FILE", help="从 JSON 配置文件随机选取内容发送"
     )
@@ -297,7 +321,7 @@ def main():
         if not args.text:
             print("❌ --once 模式需要 --text 参数")
             sys.exit(1)
-        send_once(args.text, args.image)
+        send_once(args.text, args.images)
     else:
         parser.print_help()
 
