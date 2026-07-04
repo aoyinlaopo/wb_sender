@@ -41,10 +41,18 @@ class WeiboPoster:
                     "Chrome/120.0.0.0 Safari/537.36"
                 ),
                 "X-Requested-With": "XMLHttpRequest",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             }
         )
         if xsrf_token:
             self.session.headers["X-XSRF-TOKEN"] = xsrf_token
+
+    def warmup(self):
+        """预热：访问微博首页建立会话（有助于绕过部分风控）"""
+        try:
+            self.session.get("https://weibo.com/", timeout=10)
+        except Exception:
+            pass  # 预热失败不影响后续
 
     # ── 图片上传 ───────────────────────────────────────────
 

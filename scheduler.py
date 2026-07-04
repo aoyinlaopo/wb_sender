@@ -147,6 +147,7 @@ def send_once(text: str, image: Optional[str] = None):
     """发送一条微博"""
     cookie = load_cookie_from_env()
     poster = WeiboPoster(cookie)
+    poster.warmup()  # 预热会话，降低风控概率
 
     if image:
         if not Path(image).exists():
